@@ -88,6 +88,16 @@ class BaseGame(object):
         self.last_shot_position = None
         self.last_enemy_shot_position = None
 
+
+
+
+        self.mode = SEARCH
+        self.enemy_direction = None
+        self.enemy_ships = {4:1, 3:2, 2:3, 1:4}
+        self.enemy_cur_ship = []
+
+
+
     def generate_field(self):
         raise NotImplementedError()
 
