@@ -4,7 +4,9 @@ from __future__ import unicode_literals
 
 import random
 import re
+from pprint import pprint
 
+import numpy as np
 from transliterate import translit
 
 EMPTY = 0
@@ -12,6 +14,15 @@ SHIP = 1
 BLOCKED = 2
 HIT = 3
 MISS = 4
+
+EDGE = -1 #(-1 100)
+
+SEARCH = 1
+HUNT = 2
+
+HORIZONTAL = 1
+VERTICAL = 2
+
 
 
 class BaseGame(object):
@@ -36,10 +47,18 @@ class BaseGame(object):
         self.size = 0
         self.ships = None
         self.field = []
-        self.enemy_field = []
+
+
+
 
         self.ships_count = 0
+
+        self.mode = SEARCH
+        self.enemy_direction = None
+        self.enemy_field = []
         self.enemy_ships_count = 0
+        self.enemy_ships = {4:1, 3:2, 2:3, 1:4}
+        self.enemy_cur_ship = []
 
         self.last_shot_position = None
         self.last_enemy_shot_position = None
@@ -71,6 +90,31 @@ class BaseGame(object):
 
     def generate_field(self):
         raise NotImplementedError()
+
+    def move_right(self, index):
+        new_index = index + 1
+        if index / self.size == new_index / self.size:
+            if self.check_enemy_index(new_index):
+                return new_index
+
+
+    def move_left(self, index):
+        new_index = index - 1
+        if index / self.size == new_index / self.size:
+            if self.check_enemy_index(new_index):
+                return new_index
+
+    def move_up(self, index):
+        new_index = index - 10
+        if new_index >= 0:
+            if self.check_enemy_index(new_index):
+                return new_index
+
+    def move_down(self, index):
+        new_index = index + 10
+        if new_index <= self.size**2 - 1:
+            if self.check_enemy_index(new_index):
+                return new_index
 
     def print_field(self):
         mapping = ['0', '1', 'x']
@@ -140,15 +184,37 @@ class BaseGame(object):
             return
 
         index = self.calc_index(self.last_shot_position)
-
         if message in ['hit', 'kill']:
             self.enemy_field[index] = SHIP
+            self.enemy_cur_ship.append(self.last_shot_position)
 
-            if message == 'kill':
-                self.enemy_ships_count -= 1
+        if message == 'kill':
+            self.enemy_ships_count -= 1
+            self._add_blocked()
+            self.enemy_cur_ship = []
+            self.mode = SEARCH
+            self.enemy_direction = None
+
+        elif message == 'hit':
+            self.set_enemy_direction()
+            self.mode = HUNT
 
         elif message == 'miss':
             self.enemy_field[index] = MISS
+
+    def set_enemy_direction(self):
+        if not self.enemy_direction:
+            if abs(self.enemy_cur_ship[0] - self.enemy_cur_ship[1]) == 1:
+                self.enemy_direction = HORIZONTAL
+            else:
+                self.enemy_direction = VERTICAL
+
+    def _add_blocked(self):
+        for point in self.enemy_cur_ship:
+            for shift in [1, -1, 10, -10]:
+                shifted = shift + point
+                if self.check_enemy_index(shifted):
+                        self.enemy_field[shifted] = BLOCKED
 
     def calc_index(self, position):
         x, y = position
@@ -157,6 +223,13 @@ class BaseGame(object):
             raise ValueError('Wrong position: %s %s' % (x, y))
 
         return (y - 1) * self.size + x - 1
+
+    def check_enemy_index(self, index):
+        print (index)
+        if 0 <= index <= self.size**2 - 1 and self.enemy_field[index] == EMPTY:
+                return True
+        else:
+            return False
 
     def calc_position(self, index):
         y = index / self.size + 1
@@ -245,49 +318,174 @@ class Game(BaseGame):
                 self.field[i] = EMPTY
 
     def place_ship(self, length):
-        def _try_to_place():
-            x = random.randint(1, self.size)
-            y = random.randint(1, self.size)
-            direction = random.choice([1, self.size])
 
-            index = self.calc_index((x, y))
-            values = self.field[index:None if direction == self.size else index + self.size - index % self.size:direction][:length]
+        def _try_to_place(index=None):
+            if length == 1:
+                x = random.randint(1, self.size)
+                y = random.randint(1, self.size)
+
+                direction = random.choice([1, self.size])
+
+                index = self.calc_index((x, y))
+            else:
+                if index < self.size ** 2 / 2:
+                    index = index + 1
+                else:
+                    index = index - 1
+                ##################self.check_index(index)
+                direction = 1
+                ##################
+
+            values = self.field[index:None if direction != 1 else index + self.size - index % self.size:direction][
+                     :length]
 
             if len(values) < length or any(values):
-                return False
+                return False, index
 
-            for i in range(length):
+            for i in range(0, length):
                 current_index = index + direction * i
 
                 for j in [0, 1, -1]:
-                    if (j != 0
-                            and current_index % self.size in (0, self.size - 1)
-                            and (current_index + j) % self.size in (0, self.size - 1)):
+                    if (current_index % self.size in (0, self.size - 1)
+                        and (current_index + j) % self.size in (0, self.size - 1)):
                         continue
 
                     for k in [0, self.size, -self.size]:
                         neighbour_index = current_index + k + j
 
                         if (neighbour_index < 0
-                                or neighbour_index >= len(self.field)
-                                or self.field[neighbour_index] == SHIP):
+                            or neighbour_index >= len(self.field)
+                            or self.field[neighbour_index] == SHIP):
                             continue
 
                         self.field[neighbour_index] = BLOCKED
 
                 self.field[current_index] = SHIP
 
-            return True
+            return True, index
 
-        while not _try_to_place():
-            pass
+        index = EDGE
+        while 1:
+            result, index = _try_to_place(index)
+            if result:
+                break
+
+    def predict_enemy_ships(self, ship_size):
+        field = []
+        valid_ships = []
+
+        ship_normalized = [(x * self.size) for x  in range(ship_size)]
+        for j in range(self.size):
+            last_in_line = (self.size - 1) * self.size + j
+            for i in range(self.size):
+                index = i * self.size + j
+                valid_ship = self._get_ship(index, last_in_line, ship_size, ship_normalized)
+                if valid_ship:
+                    valid_ships.append(valid_ship)
+
+        ship_normalized = range(ship_size)
+
+        for i in range(self.size):
+            last_in_line = (i+1) * self.size
+            for j in range(self.size):
+                index = i * self.size + j
+                valid_ship = self._get_ship(index, last_in_line, ship_size, ship_normalized)
+                if valid_ship:
+                    valid_ships.append(valid_ship)
+
+        return valid_ships
+
+    def _get_ship(self, index, last_in_line, ship_size, ship_parts):
+        valid_ship = []
+        valid_ship = []
+        for ship_part in ship_parts:
+            ship_index = index + ship_part
+            if self.check_enemy_index(index) and \
+                            ship_index < last_in_line:  # EMPTY
+                valid_ship.append(ship_index)
+            else:
+                valid_ship = []
+        return valid_ship
+
+
+    def get_cumulative_value(self, index, predicted_ships):
+        cum = 0
+        for ship in predicted_ships:
+            if index in ship:
+                cum += 1
+        return cum
+
+
+    def get_max_prob_move(self, ship_size):
+        predicted_ships = self.predict_enemy_ships(ship_size=ship_size)
+        cum_values = []
+        if predicted_ships:
+            for index in range(self.size ** 2 - 1):
+                if self.enemy_field[index] == 0:
+                    cum_values.append(self.get_cumulative_value(index, predicted_ships))
+            cum_values = np.array(cum_values)
+            max_index = cum_values.argmax()
+            # if max_indexs:
+            #     m = max_indexs[0]
+
+            return max_index
+        else:
+            print("no moves")
+
+    def hunt(self, direction):
+        if direction == VERTICAL:
+            index = self.move_down(self.last_shot_position)
+            if index == None:
+                index = self.move_up(self.last_shot_position)
+        if direction == HORIZONTAL:
+                index = self.move_left(self.last_shot_position)
+                if index == None:
+                    index = self.move_right(self.last_shot_position)
+        if direction == None:
+            index = self.move_down(self.last_shot_position)
+            if index == None:
+                index = self.move_up(self.last_shot_position)
+            if index == None:
+                index = self.move_left(self.last_shot_position)
+            if index == None:
+                index = self.move_right(self.last_shot_position)
+        return index
 
     def do_shot(self):
+        # EMPTY = 0
+        # SHIP = 1
+        # BLOCKED = 2
+        # HIT = 3
+        # MISS = 4
         """Метод выбора координаты выстрела.
 
-        ЕГО И НУЖНО ЗАМЕНИТЬ НА СВОЙ АЛГОРИТМ
         """
-        index = random.choice([i for i, v in enumerate(self.enemy_field) if v == EMPTY])
+        if self.mode == SEARCH:
+            ship_size = max(filter(lambda x: self.enemy_ships[x] > 0, self.enemy_ships.keys()))
+            index = self.get_max_prob_move(ship_size)
+        else:  # HUNT!
+            index = self.hunt(self.enemy_direction)
 
+        # index = random.choice([i for i, v in enumerate(self.enemy_field) if v == EMPTY])
+        #
+        #print("NINDEX", index)
         self.last_shot_position = self.calc_position(index)
         return self.convert_from_position(self.last_shot_position)
+
+
+if __name__ == "__main__":
+    # g = Game()
+    # g.start_new_game()
+    # g.generate_field()
+    # #g.print_field()
+    #
+    # g.mode = HUNT
+    # g.enemy_direction = HORIZONTAL
+    # g.enemy_ships_count = 0
+    # g.enemy_ships = {4: 1, 3: 2, 2: 3, 1: 4}
+    # g.enemy_cur_ship = [35]
+    #
+    # g.last_shot_position = 35
+    #
+    # print(g.do_shot())
+    # #print(g.do_shot())
