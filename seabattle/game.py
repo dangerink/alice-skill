@@ -225,7 +225,6 @@ class BaseGame(object):
         return (y - 1) * self.size + x - 1
 
     def check_enemy_index(self, index):
-        print (index)
         if 0 <= index <= self.size**2 - 1 and self.enemy_field[index] == EMPTY:
                 return True
         else:
@@ -466,26 +465,34 @@ class Game(BaseGame):
         else:  # HUNT!
             index = self.hunt(self.enemy_direction)
 
+        print("NEWINDEX", index)
+
         # index = random.choice([i for i, v in enumerate(self.enemy_field) if v == EMPTY])
         #
-        #print("NINDEX", index)
         self.last_shot_position = self.calc_position(index)
         return self.convert_from_position(self.last_shot_position)
 
-
-if __name__ == "__main__":
-    # g = Game()
-    # g.start_new_game()
-    # g.generate_field()
-    # #g.print_field()
-    #
-    # g.mode = HUNT
-    # g.enemy_direction = HORIZONTAL
-    # g.enemy_ships_count = 0
-    # g.enemy_ships = {4: 1, 3: 2, 2: 3, 1: 4}
-    # g.enemy_cur_ship = [35]
-    #
-    # g.last_shot_position = 35
-    #
-    # print(g.do_shot())
-    # #print(g.do_shot())
+# #
+# if __name__ == "__main__":
+#     g = Game()
+#     g.start_new_game()
+#     g.generate_field()
+#     g.print_field()
+#
+#
+#     g.mode = SEARCH
+#     print("newpos={}".format(g.do_shot()))
+#     #
+#     # g.mode = HUNT
+#     # g.enemy_direction = HORIZONTAL
+#     # g.enemy_ships_count = 0
+#     # g.enemy_ships = {4: 1, 3: 2, 2: 3, 1: 4}
+#     # g.enemy_cur_ship = [35]
+#     #
+#     # g.last_shot_position = 35
+#     #
+#     #
+#     #
+#     #
+#     # print(g.do_shot())
+#     #print(g.do_shot())
